@@ -874,22 +874,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/mesosphere/mesos-dns"
-  packages = [
-    "detect",
-    "errorutil",
-    "logging",
-    "models",
-    "records",
-    "records/labels",
-    "records/state",
-    "util"
-  ]
-  revision = "b47dc4c19f215e98da687b15b4c64e70f629bea5"
-  source = "https://github.com/containous/mesos-dns.git"
-
-[[projects]]
-  branch = "master"
   name = "github.com/miekg/dns"
   packages = ["."]
   revision = "906238edc6eb0ddface4a1923f6d41ef2a5ca59b"
@@ -1146,11 +1130,6 @@
   name = "github.com/tuvistavie/securerandom"
   packages = ["."]
   revision = "15512123a948d62f6361bd84818e11f2ad84059a"
-
-[[projects]]
-  name = "github.com/tv42/zbase32"
-  packages = ["."]
-  revision = "03389da7e0bf9844767f82690f4d68fc097a1306"
 
 [[projects]]
   name = "github.com/uber/jaeger-client-go"
@@ -1674,6 +1653,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "43f8acdb9c80004418ca3fd30c4c82f47589f96845fbaf2eaca5924b137eeed6"
+  inputs-digest = "aeba363833d80301bc3d35d6270706bb340624b54302e0ab3d5cfdc4c6c8a496"
   solver-name = "gps-cdcl"
   solver-version = 1
