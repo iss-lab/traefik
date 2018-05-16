@@ -10,8 +10,8 @@ import (
 	"github.com/containous/traefik/log"
 	"github.com/containous/traefik/provider"
 	"github.com/containous/traefik/provider/label"
+	"github.com/containous/traefik/provider/mesos/state"
 	"github.com/containous/traefik/types"
-	"github.com/mesosphere/mesos-dns/records/state"
 )
 
 type taskData struct {

@@ -3,8 +3,7 @@ package mesos
 import (
 	"testing"
 
-	"github.com/mesos/mesos-go/upid"
-	"github.com/mesosphere/mesos-dns/records/state"
+	"github.com/containous/traefik/provider/mesos/state"
 )
 
 func TestTaskRecords(t *testing.T) {
@@ -19,7 +18,6 @@ func TestTaskRecords(t *testing.T) {
 		ID:       "s_id",
 		Hostname: "127.0.0.1",
 	}
-	slave.PID.UPID = &upid.UPID{}
 	slave.PID.Host = slave.Hostname
 
 	var taskState = state.State{
@@ -31,7 +29,7 @@ func TestTaskRecords(t *testing.T) {
 	if len(p) == 0 {
 		t.Fatal("No task")
 	}
-	if p[0].SlaveIP != slave.Hostname {
+	if p[0].SlaveIPs[0] != slave.Hostname {
 		t.Fatalf("The SlaveIP (%s) should be set with the slave hostname (%s)", p[0].SlaveID, slave.Hostname)
 	}
 }

@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/containous/traefik/provider/label"
+	"github.com/containous/traefik/provider/mesos/state"
 	"github.com/containous/traefik/types"
-	"github.com/mesosphere/mesos-dns/records/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

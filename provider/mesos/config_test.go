@@ -6,8 +6,8 @@ import (
 
 	"github.com/containous/flaeg"
 	"github.com/containous/traefik/provider/label"
+	"github.com/containous/traefik/provider/mesos/state"
 	"github.com/containous/traefik/types"
-	"github.com/mesosphere/mesos-dns/records/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -650,7 +650,7 @@ func TestGetServers(t *testing.T) {
 	p := &Provider{
 		Domain:           "docker.localhost",
 		ExposedByDefault: true,
-		IPSources:        "host",
+		IPSources:        "mesos,host",
 	}
 
 	for _, test := range testCases {

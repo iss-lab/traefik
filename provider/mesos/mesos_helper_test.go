@@ -3,7 +3,7 @@ package mesos
 import (
 	"testing"
 
-	"github.com/mesosphere/mesos-dns/records/state"
+	"github.com/containous/traefik/provider/mesos/state"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,11 +19,11 @@ func TestBuilder(t *testing.T) {
 			withPorts(withPort("TCP", 80, "p"),
 				withPortTCP(81, "n"))),
 		withStatus(withHealthy(true), withState("a")))
-
+	ips := []string{"10.10.10.10"}
 	expected := state.Task{
 		FrameworkID: "",
 		ID:          "ID1",
-		SlaveIP:     "10.10.10.10",
+		SlaveIPs:    ips,
 		Name:        "",
 		SlaveID:     "",
 		State:       "",
@@ -66,7 +66,7 @@ func aTask(id string, ops ...func(*state.Task)) state.Task {
 
 func withIP(ip string) func(*state.Task) {
 	return func(task *state.Task) {
-		task.SlaveIP = ip
+		task.SlaveIPs = []string{ip}
 	}
 }
 
