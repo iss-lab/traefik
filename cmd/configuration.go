@@ -141,6 +141,7 @@ func NewTraefikDefaultPointersConfiguration() *TraefikConfiguration {
 	defaultMesos.RefreshSeconds = 30
 	defaultMesos.ZkDetectionTimeout = 30
 	defaultMesos.StateTimeoutSecond = 30
+	defaultMesos.HTTPSOn = false
 
 	// default ECS
 	var defaultECS ecs.Provider
