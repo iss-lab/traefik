@@ -249,7 +249,9 @@ type PID struct {
 
 // UnmarshalJSON implements the json.Unmarshaler interface for PIDs.
 func (p *PID) UnmarshalJSON(data []byte) (err error) {
-	p = new(PID)
+	if p == nil {
+		p = &PID{}
+	}
 	dataStr := string(bytes.Trim(data, `" `))
 	splits := strings.Split(dataStr, "@")
 	if len(splits) != 2 {
