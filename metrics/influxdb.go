@@ -12,10 +12,7 @@ import (
 	influxdb "github.com/influxdata/influxdb/client/v2"
 )
 
-var influxDBClient = influx.New(map[string]string{}, influxdb.BatchPointsConfig{}, kitlog.LoggerFunc(func(keyvals ...interface{}) error {
-	log.Info(keyvals)
-	return nil
-}))
+var influxDBClient *influx.Influx
 
 type influxDBWriter struct {
 	buf    bytes.Buffer
@@ -41,6 +38,18 @@ const (
 
 // RegisterInfluxDB registers the metrics pusher if this didn't happen yet and creates a InfluxDB Registry instance.
 func RegisterInfluxDB(config *types.InfluxDB) Registry {
+	if influxDBClient == nil {
+		influxDBClient = influx.New(
+			map[string]string{},
+			influxdb.BatchPointsConfig{
+				Database:        config.Database,
+				RetentionPolicy: config.RetentionPolicy,
+			},
+			kitlog.LoggerFunc(func(keyvals ...interface{}) error {
+				log.Info(keyvals)
+				return nil
+			}))
+	}
 	if influxDBTicker == nil {
 		influxDBTicker = initInfluxDBTicker(config)
 	}

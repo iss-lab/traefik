@@ -31,7 +31,6 @@ DOCKER_RUN_DOC_PORT := 8000
 DOCKER_RUN_DOC_MOUNT := -v $(CURDIR):/mkdocs
 DOCKER_RUN_DOC_OPTS := --rm $(DOCKER_RUN_DOC_MOUNT) -p $(DOCKER_RUN_DOC_PORT):8000
 
-
 print-%: ; @echo $*=$($*)
 
 default: binary

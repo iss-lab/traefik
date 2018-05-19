@@ -438,8 +438,10 @@ type Statsd struct {
 
 // InfluxDB contains address and metrics pushing interval configuration
 type InfluxDB struct {
-	Address      string `description:"InfluxDB address"`
-	PushInterval string `description:"InfluxDB push interval"`
+	Address         string `description:"InfluxDB address"`
+	PushInterval    string `description:"InfluxDB push interval"`
+	Database        string `description:"InfluxDB database name"`
+	RetentionPolicy string `description:"InfluxDB retention policy"`
 }
 
 // Buckets holds Prometheus Buckets
