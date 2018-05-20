@@ -1440,7 +1440,7 @@ func registerMetricClients(metricsConfig *types.Metrics) metrics.Registry {
 	}
 	if metricsConfig.InfluxDB != nil {
 		registries = append(registries, metrics.RegisterInfluxDB(metricsConfig.InfluxDB))
-		log.Debugf("Configured InfluxDB metrics pushing to %s once every %s", metricsConfig.InfluxDB.Address, metricsConfig.InfluxDB.PushInterval)
+		log.Debugf("Configured InfluxDB metrics pushing to %s once every %s to database %s and retention policy %s", metricsConfig.InfluxDB.Address, metricsConfig.InfluxDB.PushInterval, metricsConfig.InfluxDB.Database, metricsConfig.InfluxDB.RetentionPolicy)
 	}
 
 	return metrics.NewMultiRegistry(registries)

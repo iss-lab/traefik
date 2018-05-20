@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"bytes"
+	"fmt"
 	"time"
 
 	"github.com/containous/traefik/log"
@@ -49,6 +50,24 @@ func RegisterInfluxDB(config *types.InfluxDB) Registry {
 				log.Info(keyvals)
 				return nil
 			}))
+		if config.Database != "" {
+			c, err := influxdb.NewHTTPClient(influxdb.HTTPConfig{
+				Addr: config.Address,
+			})
+			if err != nil {
+				log.Errorf("Error creating InfluxDB Client: %s", err)
+			} else {
+				qStr := fmt.Sprintf("CREATE DATABASE %s", config.Database)
+				if config.RetentionPolicy != "" {
+					qStr = fmt.Sprintf("%s WITH NAME %s", qStr, config.RetentionPolicy)
+				}
+				q := influxdb.NewQuery(qStr, "", "")
+				if response, err := c.Query(q); err == nil && response.Error() == nil {
+					log.Debugf("Create db results: %s", response.Results)
+				}
+				c.Close()
+			}
+		}
 	}
 	if influxDBTicker == nil {
 		influxDBTicker = initInfluxDBTicker(config)
@@ -98,7 +117,7 @@ func StopInfluxDB() {
 }
 
 func (w *influxDBWriter) Write(bp influxdb.BatchPoints) error {
-	c, err := influxdb.NewUDPClient(influxdb.UDPConfig{
+	c, err := influxdb.NewHTTPClient(influxdb.HTTPConfig{
 		Addr: w.config.Address,
 	})
 
