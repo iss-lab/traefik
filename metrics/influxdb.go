@@ -111,15 +111,23 @@ func (w *influxDBWriter) Write(bp influxdb.BatchPoints) error {
 
 	defer c.Close()
 
-	if !w.dbCreated {
-		w.createInfluxDBDatabase(c)
+	if !w.dbCreated && w.config.HTTPAddress != "" {
+		w.createInfluxDBDatabase()
 	}
 
 	return c.Write(bp)
 }
 
 // createInfluxDBDatabase attempts to create a if it hasn't yet
-func (w *influxDBWriter) createInfluxDBDatabase(c influxdb.Client) {
+func (w *influxDBWriter) createInfluxDBDatabase() {
+	c, err := influxdb.NewHTTPClient(influxdb.HTTPConfig{
+		Addr: w.config.HTTPAddress,
+	})
+	if err != nil {
+		log.Errorf("Error creating InfluxDB client: %s", err)
+		return
+	}
+	defer c.Close()
 	if w.config.Database != "" {
 		log.Debugf("Creating influxDB database / RP: %s, %s", w.config.Database, w.config.RetentionPolicy)
 		qStr := fmt.Sprintf("CREATE DATABASE %s", w.config.Database)

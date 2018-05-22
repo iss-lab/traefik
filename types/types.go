@@ -439,6 +439,7 @@ type Statsd struct {
 // InfluxDB contains address and metrics pushing interval configuration
 type InfluxDB struct {
 	Address         string `description:"InfluxDB address"`
+	HTTPAddress     string `description:"InfluxDB http address"`
 	PushInterval    string `description:"InfluxDB push interval"`
 	Database        string `description:"InfluxDB database name"`
 	RetentionPolicy string `description:"InfluxDB retention policy"`
