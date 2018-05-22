@@ -357,20 +357,20 @@ func TestBuildConfiguration(t *testing.T) {
 }
 
 func TestBuildMultiPortConfiguration(t *testing.T) {
-	p := &Provider{
-		Domain:           "mesos.localhost",
-		ExposedByDefault: true,
-		IPSources:        "host",
-	}
-
 	testCases := []struct {
+		provider          *Provider
 		desc              string
 		tasks             []state.Task
 		expectedFrontends map[string]*types.Frontend
 		expectedBackends  map[string]*types.Backend
 	}{
 		{
-			desc: "1 task with 4 ports",
+			provider: &Provider{
+				Domain:           "mesos.localhost",
+				ExposedByDefault: true,
+				IPSources:        "host",
+			},
+			desc: "1 task with 3 exposed ports",
 			tasks: []state.Task{
 				aTask("ID1",
 					withLabel(labelMesosMultiPort, "true"),
@@ -378,6 +378,7 @@ func TestBuildMultiPortConfiguration(t *testing.T) {
 					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB2", label.SuffixEnable), "false"),
 					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB3", label.SuffixWeight), "3"),
 					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB4", label.SuffixWeight), "4"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB4", label.SuffixFrontendRule), "Host:traefik.io"),
 					withIP("10.10.10.10"),
 					withInfo("name1",
 						withPorts(
@@ -390,62 +391,131 @@ func TestBuildMultiPortConfiguration(t *testing.T) {
 				),
 			},
 			expectedFrontends: map[string]*types.Frontend{
-				"frontend-WEB1-ID1": {
-					Backend:        "backend-WEB1-name1",
+				"frontend-ID1-WEB1": {
+					Backend:        "backend-name1-WEB1",
 					EntryPoints:    []string{},
 					BasicAuth:      []string{},
 					PassHostHeader: true,
 					Routes: map[string]types.Route{
-						"route-host-WEB1-ID1": {
-							Rule: "Host:name1.mesos.localhost",
+						"route-host-ID1-WEB1": {
+							Rule: "Host:name1-web1.mesos.localhost",
 						},
 					},
 				},
-				"frontend-WEB3-ID1": {
-					Backend:        "backend-WEB3-name1",
+				"frontend-ID1-WEB3": {
+					Backend:        "backend-name1-WEB3",
 					EntryPoints:    []string{},
 					BasicAuth:      []string{},
 					PassHostHeader: true,
 					Routes: map[string]types.Route{
-						"route-host-WEB3-ID1": {
-							Rule: "Host:name1.mesos.localhost",
+						"route-host-ID1-WEB3": {
+							Rule: "Host:name1-web3.mesos.localhost",
 						},
 					},
 				},
-				"frontend-WEB4-ID1": {
-					Backend:        "backend-WEB4-name1",
+				"frontend-ID1-WEB4": {
+					Backend:        "backend-name1-WEB4",
 					EntryPoints:    []string{},
 					BasicAuth:      []string{},
 					PassHostHeader: true,
 					Routes: map[string]types.Route{
-						"route-host-WEB4-ID1": {
-							Rule: "Host:name1.mesos.localhost",
+						"route-host-ID1-WEB4": {
+							Rule: "Host:traefik.io",
 						},
 					},
 				},
 			},
 			expectedBackends: map[string]*types.Backend{
-				"backend-WEB1-name1": {
+				"backend-name1-WEB1": {
 					Servers: map[string]types.Server{
-						"server-WEB1-ID1": {
+						"server-ID1-WEB1": {
 							URL:    "http://10.10.10.10:81",
 							Weight: 1,
 						},
 					},
 				},
-				"backend-WEB3-name1": {
+				"backend-name1-WEB3": {
 					Servers: map[string]types.Server{
-						"server-WEB3-ID1": {
+						"server-ID1-WEB3": {
 							URL:    "http://10.10.10.10:83",
 							Weight: 3,
 						},
 					},
 				},
-				"backend-WEB4-name1": {
+				"backend-name1-WEB4": {
 					Servers: map[string]types.Server{
-						"server-WEB4-ID1": {
+						"server-ID1-WEB4": {
 							URL:    "http://10.10.10.10:84",
 							Weight: 4,
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "1 task with 2 exposed ports",
+			provider: &Provider{
+				Domain:             "mesos.localhost",
+				ExposedByDefault:   false,
+				GroupsAsSubDomains: true,
+				IPSources:          "host",
+			},
+			tasks: []state.Task{
+				aTask("ID1",
+					withLabel(labelMesosMultiPort, "true"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB1", label.SuffixEnable), "true"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB1", label.SuffixWeight), "1"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB2", label.SuffixEnable), "true"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB2", label.SuffixWeight), "2"),
+					withIP("10.10.10.10"),
+					withInfo("name1",
+						withPorts(
+							withPort("TCP", 81, "WEB1"),
+							withPort("TCP", 82, "WEB2"),
+							withPort("TCP", 83, "WEB3"),
+							withPort("TCP", 84, "WEB4"),
+						)),
+					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+				),
+			},
+			expectedFrontends: map[string]*types.Frontend{
+				"frontend-ID1-WEB1": {
+					Backend:        "backend-name1-WEB1",
+					EntryPoints:    []string{},
+					BasicAuth:      []string{},
+					PassHostHeader: true,
+					Routes: map[string]types.Route{
+						"route-host-ID1-WEB1": {
+							Rule: "Host:web1.name1.mesos.localhost",
+						},
+					},
+				},
+				"frontend-ID1-WEB2": {
+					Backend:        "backend-name1-WEB2",
+					EntryPoints:    []string{},
+					BasicAuth:      []string{},
+					PassHostHeader: true,
+					Routes: map[string]types.Route{
+						"route-host-ID1-WEB2": {
+							Rule: "Host:web2.name1.mesos.localhost",
+						},
+					},
+				},
+			},
+			expectedBackends: map[string]*types.Backend{
+				"backend-name1-WEB1": {
+					Servers: map[string]types.Server{
+						"server-ID1-WEB1": {
+							URL:    "http://10.10.10.10:81",
+							Weight: 1,
+						},
+					},
+				},
+				"backend-name1-WEB2": {
+					Servers: map[string]types.Server{
+						"server-ID1-WEB2": {
+							URL:    "http://10.10.10.10:82",
+							Weight: 2,
 						},
 					},
 				},
@@ -458,7 +528,7 @@ func TestBuildMultiPortConfiguration(t *testing.T) {
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
-			actualConfig := p.buildConfigurationV2(test.tasks)
+			actualConfig := test.provider.buildConfigurationV2(test.tasks)
 
 			require.NotNil(t, actualConfig)
 			assert.Equal(t, test.expectedBackends, actualConfig.Backends)
@@ -818,15 +888,15 @@ func TestGetMultiPortServers(t *testing.T) {
 				),
 			},
 			expected: map[string]types.Server{
-				"server-WEB1-ID1": {
+				"server-ID1-WEB1": {
 					URL:    "http://10.10.10.10:81",
 					Weight: label.DefaultWeight,
 				},
-				"server-WEB2-ID1": {
+				"server-ID1-WEB2": {
 					URL:    "http://10.10.10.10:82",
 					Weight: label.DefaultWeight,
 				},
-				"server-WEB3-ID1": {
+				"server-ID1-WEB3": {
 					URL:    "http://10.10.10.10:83",
 					Weight: label.DefaultWeight,
 				},

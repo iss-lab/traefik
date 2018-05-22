@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	labelMesosMultiPort = "traefik.mesos.multiport"
+	labelMesosMultiPort = "traefik.mesos.multiPort"
 )
 
 type taskData struct {
@@ -75,7 +75,7 @@ func (p *Provider) buildConfigurationV2(tasks []state.Task) *types.Configuration
 					PortName:      port.Name,
 				}
 				if taskFilter(portData, p.ExposedByDefault) {
-					name := getName(portData)
+					name := getDiscoveryName(portData)
 					if _, ok := appsTasks[name]; !ok {
 						appsTasks[name] = []taskData{portData}
 					} else {
@@ -85,10 +85,11 @@ func (p *Provider) buildConfigurationV2(tasks []state.Task) *types.Configuration
 			}
 		} else {
 			if taskFilter(data, p.ExposedByDefault) {
-				if _, ok := appsTasks[task.DiscoveryInfo.Name]; !ok {
-					appsTasks[task.DiscoveryInfo.Name] = []taskData{data}
+				name := getDiscoveryName(data)
+				if _, ok := appsTasks[name]; !ok {
+					appsTasks[name] = []taskData{data}
 				} else {
-					appsTasks[task.DiscoveryInfo.Name] = append(appsTasks[task.DiscoveryInfo.Name], data)
+					appsTasks[name] = append(appsTasks[name], data)
 				}
 			}
 		}
@@ -117,7 +118,7 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 	}
 
 	if !isEnabled(task, exposedByDefaultFlag) {
-		log.Debugf("Filtering disabled Mesos task %s", task.DiscoveryInfo.Name)
+		log.Debugf("Filtering disabled Mesos task %s", getDiscoveryName(task))
 		return false
 	}
 
@@ -158,7 +159,7 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 
 	// filter healthChecks
 	if task.Statuses != nil && len(task.Statuses) > 0 && task.Statuses[0].Healthy != nil && !*task.Statuses[0].Healthy {
-		log.Debugf("Filtering Mesos task %s with bad healthCheck", task.DiscoveryInfo.Name)
+		log.Debugf("Filtering Mesos task %s with bad healthCheck", getDiscoveryName(task))
 		return false
 
 	}
@@ -167,16 +168,20 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 
 func getID(task taskData) string {
 	if task.PortName != "" {
-		return fmt.Sprintf("%s-%s", provider.Normalize(task.PortName), provider.Normalize(task.ID))
+		return provider.Normalize(task.ID + "-" + task.PortName)
 	}
 	return provider.Normalize(task.ID)
 }
 
 func getName(task taskData) string {
+	return provider.Normalize(getDiscoveryName(task))
+}
+
+func getDiscoveryName(task taskData) string {
 	if task.PortName != "" {
-		return fmt.Sprintf("%s-%s", provider.Normalize(task.PortName), provider.Normalize(task.DiscoveryInfo.Name))
+		return task.DiscoveryInfo.Name + "/" + task.PortName
 	}
-	return provider.Normalize(task.DiscoveryInfo.Name)
+	return task.DiscoveryInfo.Name
 }
 
 func getBackendName(task taskData) string {
@@ -206,7 +211,8 @@ func (p *Provider) getFrontendRule(task taskData) string {
 	}
 
 	domain := label.GetStringValue(task.TraefikLabels, label.TraefikDomain, p.Domain)
-	return "Host:" + strings.ToLower(strings.Replace(p.getSubDomain(task.DiscoveryInfo.Name), "_", "-", -1)) + "." + domain
+	subDomain := p.getSubDomain(getDiscoveryName(task))
+	return "Host:" + strings.ToLower(strings.Replace(subDomain, "_", "-", -1)) + "." + domain
 }
 
 func (p *Provider) getServers(tasks []taskData) map[string]types.Server {
