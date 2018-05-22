@@ -100,34 +100,33 @@ func StopInfluxDB() {
 	influxDBTicker = nil
 }
 
-func (w *influxDBWriter) Write(bp influxdb.BatchPoints) error {
-	c, err := influxdb.NewUDPClient(influxdb.UDPConfig{
-		Addr: w.config.Address,
-	})
+func (w *influxDBWriter) Write(bp influxdb.BatchPoints) (err error) {
+	var c influxdb.Client
+	if w.config.HTTPAddress != "" {
+		c, err = influxdb.NewHTTPClient(influxdb.HTTPConfig{
+			Addr: w.config.HTTPAddress,
+		})
+	} else {
+		c, err = influxdb.NewUDPClient(influxdb.UDPConfig{
+			Addr: w.config.Address,
+		})
+	}
 
 	if err != nil {
-		return err
+		return
 	}
 
 	defer c.Close()
 
 	if !w.dbCreated && w.config.HTTPAddress != "" {
-		w.createInfluxDBDatabase()
+		w.createInfluxDBDatabase(c)
 	}
 
 	return c.Write(bp)
 }
 
 // createInfluxDBDatabase attempts to create a if it hasn't yet
-func (w *influxDBWriter) createInfluxDBDatabase() {
-	c, err := influxdb.NewHTTPClient(influxdb.HTTPConfig{
-		Addr: w.config.HTTPAddress,
-	})
-	if err != nil {
-		log.Errorf("Error creating InfluxDB client: %s", err)
-		return
-	}
-	defer c.Close()
+func (w *influxDBWriter) createInfluxDBDatabase(c influxdb.Client) {
 	if w.config.Database != "" {
 		log.Debugf("Creating influxDB database / RP: %s, %s", w.config.Database, w.config.RetentionPolicy)
 		qStr := fmt.Sprintf("CREATE DATABASE %s", w.config.Database)
