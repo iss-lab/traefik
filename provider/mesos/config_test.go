@@ -1,6 +1,7 @@
 package mesos
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -355,6 +356,117 @@ func TestBuildConfiguration(t *testing.T) {
 	}
 }
 
+func TestBuildMultiPortConfiguration(t *testing.T) {
+	p := &Provider{
+		Domain:           "mesos.localhost",
+		ExposedByDefault: true,
+		IPSources:        "host",
+	}
+
+	testCases := []struct {
+		desc              string
+		tasks             []state.Task
+		expectedFrontends map[string]*types.Frontend
+		expectedBackends  map[string]*types.Backend
+	}{
+		{
+			desc: "1 task with 4 ports",
+			tasks: []state.Task{
+				aTask("ID1",
+					withLabel(labelMesosMultiPort, "true"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB1", label.SuffixWeight), "1"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB2", label.SuffixEnable), "false"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB3", label.SuffixWeight), "3"),
+					withLabel(fmt.Sprintf("%s%s.%s", label.Prefix, "WEB4", label.SuffixWeight), "4"),
+					withIP("10.10.10.10"),
+					withInfo("name1",
+						withPorts(
+							withPort("TCP", 81, "WEB1"),
+							withPort("TCP", 82, "WEB2"),
+							withPort("TCP", 83, "WEB3"),
+							withPort("TCP", 84, "WEB4"),
+						)),
+					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+				),
+			},
+			expectedFrontends: map[string]*types.Frontend{
+				"frontend-WEB1-ID1": {
+					Backend:        "backend-WEB1-name1",
+					EntryPoints:    []string{},
+					BasicAuth:      []string{},
+					PassHostHeader: true,
+					Routes: map[string]types.Route{
+						"route-host-WEB1-ID1": {
+							Rule: "Host:name1.mesos.localhost",
+						},
+					},
+				},
+				"frontend-WEB3-ID1": {
+					Backend:        "backend-WEB3-name1",
+					EntryPoints:    []string{},
+					BasicAuth:      []string{},
+					PassHostHeader: true,
+					Routes: map[string]types.Route{
+						"route-host-WEB3-ID1": {
+							Rule: "Host:name1.mesos.localhost",
+						},
+					},
+				},
+				"frontend-WEB4-ID1": {
+					Backend:        "backend-WEB4-name1",
+					EntryPoints:    []string{},
+					BasicAuth:      []string{},
+					PassHostHeader: true,
+					Routes: map[string]types.Route{
+						"route-host-WEB4-ID1": {
+							Rule: "Host:name1.mesos.localhost",
+						},
+					},
+				},
+			},
+			expectedBackends: map[string]*types.Backend{
+				"backend-WEB1-name1": {
+					Servers: map[string]types.Server{
+						"server-WEB1-ID1": {
+							URL:    "http://10.10.10.10:81",
+							Weight: 1,
+						},
+					},
+				},
+				"backend-WEB3-name1": {
+					Servers: map[string]types.Server{
+						"server-WEB3-ID1": {
+							URL:    "http://10.10.10.10:83",
+							Weight: 3,
+						},
+					},
+				},
+				"backend-WEB4-name1": {
+					Servers: map[string]types.Server{
+						"server-WEB4-ID1": {
+							URL:    "http://10.10.10.10:84",
+							Weight: 4,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range testCases {
+		test := test
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			actualConfig := p.buildConfigurationV2(test.tasks)
+
+			require.NotNil(t, actualConfig)
+			assert.Equal(t, test.expectedBackends, actualConfig.Backends)
+			assert.Equal(t, test.expectedFrontends, actualConfig.Frontends)
+		})
+	}
+}
+
 func TestTaskFilter(t *testing.T) {
 	testCases := []struct {
 		desc             string
@@ -420,7 +532,7 @@ func TestTaskFilter(t *testing.T) {
 				withDefaultStatus(),
 				withLabel(label.TraefikEnable, "true"),
 				withLabel(label.TraefikPortIndex, "1"),
-				withLabel(label.TraefikEnable, "80"),
+				withLabel(label.TraefikPort, "80"),
 				withInfo("test", withPorts(withPortTCP(80, "WEB"))),
 			),
 			exposedByDefault: true,
@@ -642,6 +754,81 @@ func TestGetServers(t *testing.T) {
 				"server-ID4": {
 					URL:    "http://20.10.10.11:81",
 					Weight: 6,
+				},
+			},
+		},
+	}
+
+	p := &Provider{
+		Domain:           "docker.localhost",
+		ExposedByDefault: true,
+		IPSources:        "mesos,host",
+	}
+
+	for _, test := range testCases {
+		test := test
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			actual := p.getServers(test.tasks)
+
+			assert.Equal(t, test.expected, actual)
+		})
+	}
+}
+
+func TestGetMultiPortServers(t *testing.T) {
+	testCases := []struct {
+		desc     string
+		tasks    []taskData
+		expected map[string]types.Server
+	}{
+		{
+			desc: "",
+			tasks: []taskData{
+				aMultiTaskData("ID1", "WEB1",
+					withIP("10.10.10.10"),
+					withInfo("name1",
+						withPorts(
+							withPort("TCP", 81, "WEB1"),
+							withPort("TCP", 82, "WEB2"),
+							withPort("TCP", 83, "WEB3"),
+						)),
+					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+				),
+				aMultiTaskData("ID1", "WEB2",
+					withIP("10.10.10.10"),
+					withInfo("name1",
+						withPorts(
+							withPort("TCP", 81, "WEB1"),
+							withPort("TCP", 82, "WEB2"),
+							withPort("TCP", 83, "WEB3"),
+						)),
+					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+				),
+				aMultiTaskData("ID1", "WEB3",
+					withIP("10.10.10.10"),
+					withInfo("name1",
+						withPorts(
+							withPort("TCP", 81, "WEB1"),
+							withPort("TCP", 82, "WEB2"),
+							withPort("TCP", 83, "WEB3"),
+						)),
+					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+				),
+			},
+			expected: map[string]types.Server{
+				"server-WEB1-ID1": {
+					URL:    "http://10.10.10.10:81",
+					Weight: label.DefaultWeight,
+				},
+				"server-WEB2-ID1": {
+					URL:    "http://10.10.10.10:82",
+					Weight: label.DefaultWeight,
+				},
+				"server-WEB3-ID1": {
+					URL:    "http://10.10.10.10:83",
+					Weight: label.DefaultWeight,
 				},
 			},
 		},

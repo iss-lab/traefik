@@ -3,6 +3,7 @@ package mesos
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -14,9 +15,14 @@ import (
 	"github.com/containous/traefik/types"
 )
 
+const (
+	labelMesosMultiPort = "traefik.mesos.multiport"
+)
+
 type taskData struct {
 	state.Task
 	TraefikLabels map[string]string
+	PortName      string
 }
 
 func (p *Provider) buildConfigurationV2(tasks []state.Task) *types.Configuration {
@@ -50,18 +56,40 @@ func (p *Provider) buildConfigurationV2(tasks []state.Task) *types.Configuration
 		"getWhiteList":      label.GetWhiteList,
 	}
 
-	// filter tasks
 	appsTasks := make(map[string][]taskData)
+
+	// filter tasks
 	for _, task := range tasks {
 		data := taskData{
 			Task:          task,
 			TraefikLabels: extractLabels(task),
+			PortName:      "",
 		}
-		if taskFilter(data, p.ExposedByDefault) {
-			if _, ok := appsTasks[task.DiscoveryInfo.Name]; !ok {
-				appsTasks[task.DiscoveryInfo.Name] = []taskData{data}
-			} else {
-				appsTasks[task.DiscoveryInfo.Name] = append(appsTasks[task.DiscoveryInfo.Name], data)
+		multiPort := label.GetBoolValue(data.TraefikLabels, labelMesosMultiPort, false)
+		// create a data per port here!
+		if multiPort {
+			for _, port := range task.DiscoveryInfo.Ports.DiscoveryPorts {
+				portData := taskData{
+					Task:          task,
+					TraefikLabels: extractPortLabels(port.Name, task),
+					PortName:      port.Name,
+				}
+				if taskFilter(portData, p.ExposedByDefault) {
+					name := getName(portData)
+					if _, ok := appsTasks[name]; !ok {
+						appsTasks[name] = []taskData{portData}
+					} else {
+						appsTasks[name] = append(appsTasks[name], portData)
+					}
+				}
+			}
+		} else {
+			if taskFilter(data, p.ExposedByDefault) {
+				if _, ok := appsTasks[task.DiscoveryInfo.Name]; !ok {
+					appsTasks[task.DiscoveryInfo.Name] = []taskData{data}
+				} else {
+					appsTasks[task.DiscoveryInfo.Name] = append(appsTasks[task.DiscoveryInfo.Name], data)
+				}
 			}
 		}
 	}
@@ -138,16 +166,26 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 }
 
 func getID(task taskData) string {
+	if task.PortName != "" {
+		return fmt.Sprintf("%s-%s", provider.Normalize(task.PortName), provider.Normalize(task.ID))
+	}
 	return provider.Normalize(task.ID)
 }
 
+func getName(task taskData) string {
+	if task.PortName != "" {
+		return fmt.Sprintf("%s-%s", provider.Normalize(task.PortName), provider.Normalize(task.DiscoveryInfo.Name))
+	}
+	return provider.Normalize(task.DiscoveryInfo.Name)
+}
+
 func getBackendName(task taskData) string {
-	return label.GetStringValue(task.TraefikLabels, label.TraefikBackend, provider.Normalize(task.DiscoveryInfo.Name))
+	return label.GetStringValue(task.TraefikLabels, label.TraefikBackend, getName(task))
 }
 
 func getFrontendName(task taskData) string {
 	// TODO task.ID -> task.Name + task.ID
-	return provider.Normalize(task.ID)
+	return getID(task)
 }
 
 func (p *Provider) getSubDomain(name string) string {
@@ -202,11 +240,16 @@ func (p *Provider) getServerPort(task taskData) string {
 	if plv >= 0 {
 		return strconv.Itoa(task.DiscoveryInfo.Ports.DiscoveryPorts[plv].Number)
 	}
-
 	if pv := label.GetStringValue(task.TraefikLabels, label.TraefikPort, ""); len(pv) > 0 {
 		return pv
 	}
-
+	if task.PortName != "" {
+		for _, port := range task.DiscoveryInfo.Ports.DiscoveryPorts {
+			if port.Name == task.PortName {
+				return strconv.Itoa(port.Number)
+			}
+		}
+	}
 	for _, port := range task.DiscoveryInfo.Ports.DiscoveryPorts {
 		return strconv.Itoa(port.Number)
 	}
@@ -232,6 +275,20 @@ func extractLabels(task state.Task) map[string]string {
 	labels := make(map[string]string)
 	for _, lbl := range task.Labels {
 		labels[lbl.Key] = lbl.Value
+	}
+	return labels
+}
+
+func extractPortLabels(portName string, task state.Task) map[string]string {
+	pattern := fmt.Sprintf("^%s%s.(.*)$", label.Prefix, portName)
+	r, _ := regexp.Compile(pattern)
+	labels := make(map[string]string)
+	for _, lbl := range task.Labels {
+		matches := r.FindStringSubmatch(lbl.Key)
+		if len(matches) == 2 {
+			newKey := fmt.Sprintf("%s%s", label.Prefix, matches[1])
+			labels[newKey] = lbl.Value
+		}
 	}
 	return labels
 }
