@@ -101,7 +101,7 @@ func StopInfluxDB() {
 }
 
 func (w *influxDBWriter) Write(bp influxdb.BatchPoints) error {
-	c, err := influxdb.NewHTTPClient(influxdb.HTTPConfig{
+	c, err := influxdb.NewUDPClient(influxdb.UDPConfig{
 		Addr: w.config.Address,
 	})
 
