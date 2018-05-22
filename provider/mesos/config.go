@@ -56,41 +56,37 @@ func (p *Provider) buildConfigurationV2(tasks []state.Task) *types.Configuration
 		"getWhiteList":      label.GetWhiteList,
 	}
 
-	appsTasks := make(map[string][]taskData)
-
-	// filter tasks
+	// create taskData per task or per port
+	allTaskData := []taskData{}
 	for _, task := range tasks {
-		data := taskData{
-			Task:          task,
-			TraefikLabels: extractLabels(task),
-			PortName:      "",
-		}
-		multiPort := label.GetBoolValue(data.TraefikLabels, labelMesosMultiPort, false)
-		// create a data per port here!
+		taskLabels := extractLabels(task)
+		multiPort := label.GetBoolValue(taskLabels, labelMesosMultiPort, false)
 		if multiPort {
 			for _, port := range task.DiscoveryInfo.Ports.DiscoveryPorts {
-				portData := taskData{
+				taskPortLabels := extractPortLabels(port.Name, task)
+				allTaskData = append(allTaskData, taskData{
 					Task:          task,
-					TraefikLabels: extractPortLabels(port.Name, task),
+					TraefikLabels: taskPortLabels,
 					PortName:      port.Name,
-				}
-				if taskFilter(portData, p.ExposedByDefault) {
-					name := getDiscoveryName(portData)
-					if _, ok := appsTasks[name]; !ok {
-						appsTasks[name] = []taskData{portData}
-					} else {
-						appsTasks[name] = append(appsTasks[name], portData)
-					}
-				}
+				})
 			}
 		} else {
-			if taskFilter(data, p.ExposedByDefault) {
-				name := getDiscoveryName(data)
-				if _, ok := appsTasks[name]; !ok {
-					appsTasks[name] = []taskData{data}
-				} else {
-					appsTasks[name] = append(appsTasks[name], data)
-				}
+			allTaskData = append(allTaskData, taskData{
+				Task:          task,
+				TraefikLabels: taskLabels,
+			})
+		}
+	}
+
+	// filter tasks
+	appsTasks := make(map[string][]taskData)
+	for _, data := range allTaskData {
+		if taskFilter(data, p.ExposedByDefault) {
+			name := getDiscoveryName(data)
+			if _, ok := appsTasks[name]; !ok {
+				appsTasks[name] = []taskData{data}
+			} else {
+				appsTasks[name] = append(appsTasks[name], data)
 			}
 		}
 	}
