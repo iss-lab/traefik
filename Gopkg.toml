@@ -120,8 +120,8 @@
   name = "github.com/abronan/valkeyrie"
 
 [[constraint]]
-  name = "github.com/mesosphere/mesos-dns"
-  source = "https://github.com/containous/mesos-dns.git"
+  branch = "master"
+  name = "github.com/mesos/mesos-go"
 
 [[constraint]]
   branch = "master"
