@@ -3,28 +3,25 @@ package mesos
 import (
 	"testing"
 
-	"github.com/mesos/mesos-go/upid"
-	"github.com/mesosphere/mesos-dns/records/state"
+	"github.com/mesos/mesos-go/api/v1/lib"
 )
 
 func TestTaskRecords(t *testing.T) {
-	var task = state.Task{
+	var task = mesos.Task{
 		SlaveID: "s_id",
 		State:   "TASK_RUNNING",
 	}
-	var framework = state.Framework{
-		Tasks: []state.Task{task},
+	var framework = mesos.Framework{
+		Tasks: []mesos.Task{task},
 	}
-	var slave = state.Slave{
+	var slave = mesos.Slave{
 		ID:       "s_id",
 		Hostname: "127.0.0.1",
 	}
-	slave.PID.UPID = &upid.UPID{}
-	slave.PID.Host = slave.Hostname
 
-	var taskState = state.State{
-		Slaves:     []state.Slave{slave},
-		Frameworks: []state.Framework{framework},
+	var taskState = mesos.State{
+		Slaves:     []mesos.Slave{slave},
+		Frameworks: []mesos.Framework{framework},
 	}
 
 	var p = taskRecords(taskState)

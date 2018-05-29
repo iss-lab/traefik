@@ -11,16 +11,16 @@ import (
 	"github.com/containous/traefik/provider"
 	"github.com/containous/traefik/provider/label"
 	"github.com/containous/traefik/types"
-	"github.com/mesosphere/mesos-dns/records/state"
+	"github.com/mesos/mesos-go/api/v1/lib"
 )
 
 type taskData struct {
-	state.Task
+	mesos.Task
 	TraefikLabels map[string]string
 	SegmentName   string
 }
 
-func (p *Provider) buildConfigurationV2(tasks []state.Task) *types.Configuration {
+func (p *Provider) buildConfigurationV2(tasks []mesos.Task) *types.Configuration {
 	var mesosFuncMap = template.FuncMap{
 		"getDomain":           label.GetFuncString(label.TraefikDomain, p.Domain),
 		"getSubDomain":        p.getSubDomain,
@@ -72,7 +72,7 @@ func (p *Provider) buildConfigurationV2(tasks []state.Task) *types.Configuration
 	return configuration
 }
 
-func (p *Provider) filterTasks(tasks []state.Task) map[string][]taskData {
+func (p *Provider) filterTasks(tasks []mesos.Task) map[string][]taskData {
 	appsTasks := make(map[string][]taskData)
 
 	for _, task := range tasks {
@@ -99,9 +99,10 @@ func (p *Provider) filterTasks(tasks []state.Task) map[string][]taskData {
 }
 
 func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
+
 	name := getName(task)
 
-	if len(task.DiscoveryInfo.Ports.DiscoveryPorts) == 0 {
+	if len(task.GetDiscovery().GetPorts().GetPorts()) == 0 {
 		log.Debugf("Filtering Mesos task without port %s", name)
 		return false
 	}
@@ -120,7 +121,7 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 	}
 	if portIndexLabel != "" {
 		index, err := strconv.Atoi(portIndexLabel)
-		if err != nil || index < 0 || index > len(task.DiscoveryInfo.Ports.DiscoveryPorts)-1 {
+		if err != nil || index < 0 || index > len(task.GetDiscovery().GetPorts().GetPorts())-1 {
 			log.Debugf("Filtering Mesos task %s with unexpected value for %q label", task.Name, label.TraefikPortIndex)
 			return false
 		}
@@ -133,8 +134,8 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 		}
 
 		var foundPort bool
-		for _, exposedPort := range task.DiscoveryInfo.Ports.DiscoveryPorts {
-			if port == exposedPort.Number {
+		for _, exposedPort := range task.GetDiscovery().GetPorts().GetPorts() {
+			if port == int(exposedPort.Number) {
 				foundPort = true
 				break
 			}
@@ -147,8 +148,8 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 	}
 	if portNameLabel != "" {
 		var foundPort bool
-		for _, exposedPort := range task.DiscoveryInfo.Ports.DiscoveryPorts {
-			if portNameLabel == exposedPort.Name {
+		for _, exposedPort := range task.GetDiscovery().GetPorts().GetPorts() {
+			if portNameLabel == exposedPort.GetName() {
 				foundPort = true
 				break
 			}
@@ -170,11 +171,11 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 }
 
 func getID(task taskData) string {
-	return provider.Normalize(task.ID + getSegmentNameSuffix(task.SegmentName))
+	return provider.Normalize(task.TaskID.Value + getSegmentNameSuffix(task.SegmentName))
 }
 
 func getName(task taskData) string {
-	return provider.Normalize(task.DiscoveryInfo.Name + getSegmentNameSuffix(task.SegmentName))
+	return provider.Normalize(task.GetDiscovery().GetName() + getSegmentNameSuffix(task.SegmentName))
 }
 
 func getBackendName(task taskData) string {
@@ -183,7 +184,7 @@ func getBackendName(task taskData) string {
 
 func getFrontendName(task taskData) string {
 	// TODO task.ID -> task.Name + task.ID
-	return provider.Normalize(task.ID + getSegmentNameSuffix(task.SegmentName))
+	return provider.Normalize(task.TaskID.Value + getSegmentNameSuffix(task.SegmentName))
 }
 
 func getSegmentNameSuffix(serviceName string) string {
@@ -204,7 +205,7 @@ func (p *Provider) getSubDomain(name string) string {
 }
 
 func (p *Provider) getSegmentSubDomain(task taskData) string {
-	subDomain := strings.ToLower(p.getSubDomain(task.DiscoveryInfo.Name))
+	subDomain := strings.ToLower(p.getSubDomain(task.GetDiscovery().GetName()))
 	if len(task.SegmentName) > 0 {
 		subDomain = strings.ToLower(provider.Normalize(task.SegmentName)) + "." + subDomain
 	}
@@ -246,7 +247,8 @@ func (p *Provider) getServers(tasks []taskData) map[string]types.Server {
 }
 
 func (p *Provider) getHost(task taskData) string {
-	return task.IP(strings.Split(p.IPSources, ",")...)
+	ipSources := strings.Split(p.IPSources, ",")
+	return p.State.GetTaskIP(task.Task, ipSources)
 }
 
 func (p *Provider) getServerPort(task taskData) string {
@@ -259,22 +261,22 @@ func (p *Provider) getServerPort(task taskData) string {
 		return strconv.Itoa(pv)
 	}
 
-	plv := getIntValue(task.TraefikLabels, label.TraefikPortIndex, math.MinInt32, len(task.DiscoveryInfo.Ports.DiscoveryPorts)-1)
+	plv := getIntValue(task.TraefikLabels, label.TraefikPortIndex, math.MinInt32, len(task.GetDiscovery().GetPorts().GetPorts())-1)
 	if plv >= 0 {
-		return strconv.Itoa(task.DiscoveryInfo.Ports.DiscoveryPorts[plv].Number)
+		return strconv.Itoa(int(task.GetDiscovery().GetPorts().GetPorts()[plv].GetNumber()))
 	}
 
 	// Find named port using traefik.portName or the segment name
 	if pn := label.GetStringValue(task.TraefikLabels, label.TraefikPortName, task.SegmentName); len(pn) > 0 {
-		for _, port := range task.DiscoveryInfo.Ports.DiscoveryPorts {
-			if pn == port.Name {
-				return strconv.Itoa(port.Number)
+		for _, port := range task.GetDiscovery().GetPorts().GetPorts() {
+			if pn == port.GetName() {
+				return strconv.Itoa(int(port.GetNumber()))
 			}
 		}
 	}
 
-	for _, port := range task.DiscoveryInfo.Ports.DiscoveryPorts {
-		return strconv.Itoa(port.Number)
+	for _, port := range task.GetDiscovery().GetPorts().GetPorts() {
+		return strconv.Itoa(int(port.Number))
 	}
 	return ""
 }
@@ -294,10 +296,10 @@ func getIntValue(labels map[string]string, labelName string, defaultValue int, m
 	return defaultValue
 }
 
-func extractLabels(task state.Task) map[string]string {
+func extractLabels(task mesos.Task) map[string]string {
 	labels := make(map[string]string)
-	for _, lbl := range task.Labels {
-		labels[lbl.Key] = lbl.Value
+	for _, lbl := range task.GetLabels().GetLabels() {
+		labels[lbl.Key] = lbl.GetValue()
 	}
 	return labels
 }

@@ -1,8 +1,10 @@
 package mesos
 
 import (
-	"fmt"
-	"strings"
+	// "context"
+	// "fmt"
+	// "net"
+	// "strings"
 	"time"
 
 	"github.com/cenk/backoff"
@@ -11,15 +13,8 @@ import (
 	"github.com/containous/traefik/provider"
 	"github.com/containous/traefik/safe"
 	"github.com/containous/traefik/types"
-	"github.com/mesos/mesos-go/detector"
-	"github.com/mesosphere/mesos-dns/records"
-	"github.com/mesosphere/mesos-dns/records/state"
-
-	// Register mesos zoo the detector
-	_ "github.com/mesos/mesos-go/detector/zoo"
-	"github.com/mesosphere/mesos-dns/detect"
-	"github.com/mesosphere/mesos-dns/logging"
-	"github.com/mesosphere/mesos-dns/util"
+	"github.com/mesos/mesos-go/api/v1/lib"
+	"github.com/mesos/mesos-go/api/v1/lib/master"
 )
 
 var _ provider.Provider = (*Provider)(nil)
@@ -35,134 +30,95 @@ type Provider struct {
 	RefreshSeconds     int    `description:"Polling interval (in seconds)" export:"true"`
 	IPSources          string `description:"IPSources (e.g. host, docker, mesos, netinfo)" export:"true"`
 	StateTimeoutSecond int    `description:"HTTP Timeout (in seconds)" export:"true"`
-	Masters            []string
+
+	// Internal
+	State *StateCache
 }
 
 // Provide allows the mesos provider to provide configurations to traefik
 // using the given configuration channel.
 func (p *Provider) Provide(configurationChan chan<- types.ConfigMessage, pool *safe.Pool, constraints types.Constraints) error {
-	operation := func() error {
+	mkClient := MkClientFn(p.Endpoint, p.ZkDetectionTimeout, p.StateTimeoutSecond)
 
-		// initialize logging
-		logging.SetupLogs()
-
-		log.Debugf("%s", p.IPSources)
-
-		var zk string
-		var masters []string
-
-		if strings.HasPrefix(p.Endpoint, "zk://") {
-			zk = p.Endpoint
-		} else {
-			masters = strings.Split(p.Endpoint, ",")
-		}
-
-		errch := make(chan error)
-
-		changed := detectMasters(zk, masters)
-		reload := time.NewTicker(time.Second * time.Duration(p.RefreshSeconds))
-		zkTimeout := time.Second * time.Duration(p.ZkDetectionTimeout)
-		timeout := time.AfterFunc(zkTimeout, func() {
-			if zkTimeout > 0 {
-				errch <- fmt.Errorf("master detection timed out after %s", zkTimeout)
+	pool.Go(func(stop chan bool) {
+		operation := func() (err error) {
+			var cli *Client
+			cli, err = mkClient()
+			if err != nil {
+				return
 			}
-		})
+			p.State = NewStateCache()
 
-		defer reload.Stop()
-		defer util.HandleCrash()
-
-		if !p.Watch {
-			reload.Stop()
-			timeout.Stop()
-		}
-
-		for {
-			select {
-			case <-reload.C:
-				tasks := p.getTasks()
-				configuration := p.buildConfiguration(tasks)
-				if configuration != nil {
-					configurationChan <- types.ConfigMessage{
-						ProviderName:  "mesos",
-						Configuration: configuration,
+			eventCh, errCh := cli.Watch()
+			for {
+				select {
+				case <-stop:
+					cli.Stop()
+					return
+				case e := <-eventCh:
+					if changed := p.handleEvent(e); changed {
+						tasks := p.State.GetRunningTasks()
+						configuration := p.buildConfiguration(tasks)
+						if configuration != nil {
+							configurationChan <- types.ConfigMessage{
+								ProviderName:  "mesos",
+								Configuration: configuration,
+							}
+						}
 					}
-				}
-			case masters := <-changed:
-				if len(masters) == 0 || masters[0] == "" {
-					// no leader
-					timeout.Reset(zkTimeout)
-				} else {
-					timeout.Stop()
-				}
-				log.Debugf("new masters detected: %v", masters)
-				p.Masters = masters
-				tasks := p.getTasks()
-				configuration := p.buildConfiguration(tasks)
-				if configuration != nil {
-					configurationChan <- types.ConfigMessage{
-						ProviderName:  "mesos",
-						Configuration: configuration,
+					if !p.Watch {
+						cli.Stop()
+						return
 					}
+				case err = <-errCh:
+					log.Errorf("%s", err)
+					return
 				}
-			case err := <-errch:
-				log.Errorf("%s", err)
 			}
+			return
 		}
-	}
 
-	notify := func(err error, time time.Duration) {
-		log.Errorf("Mesos connection error %+v, retrying in %s", err, time)
-	}
-	err := backoff.RetryNotify(safe.OperationWithRecover(operation), job.NewBackOff(backoff.NewExponentialBackOff()), notify)
-	if err != nil {
-		log.Errorf("Cannot connect to Mesos server %+v", err)
-	}
+		notify := func(err error, time time.Duration) {
+			log.Errorf("Provider connection error: %s; retrying in %s", err, time)
+		}
+		err := backoff.RetryNotify(safe.OperationWithRecover(operation), job.NewBackOff(backoff.NewExponentialBackOff()), notify)
+		if err != nil {
+			log.Errorf("Cannot connect to Provider: %s", err)
+		}
+	})
+
 	return nil
 }
 
-func detectMasters(zk string, masters []string) <-chan []string {
-	changed := make(chan []string, 1)
-	if zk != "" {
-		log.Debugf("Starting master detector for ZK ", zk)
-		if md, err := detector.New(zk); err != nil {
-			log.Errorf("Failed to create master detector: %v", err)
-		} else if err := md.Detect(detect.NewMasters(masters, changed)); err != nil {
-			log.Errorf("Failed to initialize master detector: %v", err)
+func (p *Provider) handleEvent(e master.Event) (changed bool) {
+	log.Debugf("Got mesos master event: %s", e.GetType())
+	switch t := e.GetType(); t {
+	case master.Event_SUBSCRIBED:
+		agents := e.GetSubscribed().GetGetState().GetGetAgents().GetAgents()
+		p.State.AddAgents(agents)
+		tasks := e.GetSubscribed().GetGetState().GetGetTasks().GetTasks()
+		p.State.AddTasks(tasks)
+		changed = true
+	case master.Event_TASK_ADDED:
+		task := e.GetTaskAdded().GetTask()
+		p.State.AddTask(task)
+		if task.GetState() == mesos.TASK_RUNNING {
+			changed = true
 		}
-	} else {
-		changed <- masters
+	case master.Event_TASK_UPDATED:
+		task := e.GetTaskUpdated().GetStatus()
+		p.State.UpdateTask(task)
+		changed = true
+	case master.Event_AGENT_ADDED:
+		agent := e.GetAgentAdded().GetAgent()
+		p.State.AddAgent(agent)
+	case master.Event_AGENT_REMOVED:
+		id := e.GetAgentRemoved().GetAgentID()
+		p.State.RemoveAgent(id.GetValue())
+	case master.Event_HEARTBEAT:
+		// noop, handled in client
+	default:
+		// noop
 	}
 	return changed
-}
-
-func (p *Provider) getTasks() []state.Task {
-	rg := records.NewRecordGenerator(time.Duration(p.StateTimeoutSecond) * time.Second)
-
-	st, err := rg.FindMaster(p.Masters...)
-	if err != nil {
-		log.Errorf("Failed to create a client for Mesos, error: %v", err)
-		return nil
-	}
-
-	return taskRecords(st)
-}
-
-func taskRecords(st state.State) []state.Task {
-	var tasks []state.Task
-	for _, f := range st.Frameworks {
-		for _, task := range f.Tasks {
-			for _, slave := range st.Slaves {
-				if task.SlaveID == slave.ID {
-					task.SlaveIP = slave.PID.Host
-				}
-			}
-
-			// only do running and discoverable tasks
-			if task.State == "TASK_RUNNING" {
-				tasks = append(tasks, task)
-			}
-		}
-	}
-
-	return tasks
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/containous/traefik/provider/label"
-	"github.com/mesosphere/mesos-dns/records/state"
+	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,27 +22,27 @@ func TestBuilder(t *testing.T) {
 				withPortTCP(81, "n"))),
 		withStatus(withHealthy(true), withState("a")))
 
-	expected := state.Task{
+	expected := mesos.Task{
 		FrameworkID: "",
 		ID:          "ID1",
 		SlaveIP:     "10.10.10.10",
 		Name:        "",
 		SlaveID:     "",
 		State:       "",
-		Statuses: []state.Status{{
+		Statuses: []mesos.Status{{
 			State:           "a",
 			Healthy:         Bool(true),
-			ContainerStatus: state.ContainerStatus{},
+			ContainerStatus: mesos.ContainerStatus{},
 		}},
-		DiscoveryInfo: state.DiscoveryInfo{
+		DiscoveryInfo: mesos.DiscoveryInfo{
 			Name: "name1",
 			Labels: struct {
-				Labels []state.Label "json:\"labels\""
+				Labels []mesos.Label "json:\"labels\""
 			}{},
-			Ports: state.Ports{DiscoveryPorts: []state.DiscoveryPort{
+			Ports: mesos.Ports{DiscoveryPorts: []mesos.DiscoveryPort{
 				{Protocol: "TCP", Number: 80, Name: "p"},
 				{Protocol: "TCP", Number: 81, Name: "n"}}}},
-		Labels: []state.Label{
+		Labels: []mesos.Label{
 			{Key: "foo", Value: "bar"},
 			{Key: "fii", Value: "bar"},
 			{Key: "fuu", Value: "bar"}}}
@@ -50,8 +50,8 @@ func TestBuilder(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
-func aTaskData(id, segment string, ops ...func(*state.Task)) taskData {
-	ts := &state.Task{ID: id}
+func aTaskData(id, segment string, ops ...func(*mesos.Task)) taskData {
+	ts := &mesos.Task{ID: id}
 	for _, op := range ops {
 		op(ts)
 	}
@@ -62,7 +62,7 @@ func aTaskData(id, segment string, ops ...func(*state.Task)) taskData {
 	return taskData{Task: *ts, TraefikLabels: lbls[""], SegmentName: segment}
 }
 
-func segmentedTaskData(segments []string, ts state.Task) []taskData {
+func segmentedTaskData(segments []string, ts mesos.Task) []taskData {
 	td := []taskData{}
 	lbls := label.ExtractTraefikLabels(extractLabels(ts))
 	for _, s := range segments {
@@ -75,23 +75,23 @@ func segmentedTaskData(segments []string, ts state.Task) []taskData {
 	return td
 }
 
-func aTask(id string, ops ...func(*state.Task)) state.Task {
-	ts := &state.Task{ID: id}
+func aTask(id string, ops ...func(*mesos.Task)) mesos.Task {
+	ts := &mesos.Task{ID: id}
 	for _, op := range ops {
 		op(ts)
 	}
 	return *ts
 }
 
-func withIP(ip string) func(*state.Task) {
-	return func(task *state.Task) {
+func withIP(ip string) func(*mesos.Task) {
+	return func(task *mesos.Task) {
 		task.SlaveIP = ip
 	}
 }
 
-func withInfo(name string, ops ...func(*state.DiscoveryInfo)) func(*state.Task) {
-	return func(task *state.Task) {
-		info := &state.DiscoveryInfo{Name: name}
+func withInfo(name string, ops ...func(*mesos.DiscoveryInfo)) func(*mesos.Task) {
+	return func(task *mesos.Task) {
+		info := &mesos.DiscoveryInfo{Name: name}
 		for _, op := range ops {
 			op(info)
 		}
@@ -99,46 +99,46 @@ func withInfo(name string, ops ...func(*state.DiscoveryInfo)) func(*state.Task) 
 	}
 }
 
-func withPorts(ops ...func(port *state.DiscoveryPort)) func(*state.DiscoveryInfo) {
-	return func(info *state.DiscoveryInfo) {
-		var ports []state.DiscoveryPort
+func withPorts(ops ...func(port *mesos.DiscoveryPort)) func(*mesos.DiscoveryInfo) {
+	return func(info *mesos.DiscoveryInfo) {
+		var ports []mesos.DiscoveryPort
 		for _, op := range ops {
-			pt := &state.DiscoveryPort{}
+			pt := &mesos.DiscoveryPort{}
 			op(pt)
 			ports = append(ports, *pt)
 		}
 
-		info.Ports = state.Ports{
+		info.Ports = mesos.Ports{
 			DiscoveryPorts: ports,
 		}
 	}
 }
 
-func withPort(proto string, port int, name string) func(port *state.DiscoveryPort) {
-	return func(p *state.DiscoveryPort) {
+func withPort(proto string, port int, name string) func(port *mesos.DiscoveryPort) {
+	return func(p *mesos.DiscoveryPort) {
 		p.Protocol = proto
 		p.Number = port
 		p.Name = name
 	}
 }
 
-func withPortTCP(port int, name string) func(port *state.DiscoveryPort) {
+func withPortTCP(port int, name string) func(port *mesos.DiscoveryPort) {
 	return withPort("TCP", port, name)
 }
 
-func withStatus(ops ...func(*state.Status)) func(*state.Task) {
-	return func(task *state.Task) {
-		st := &state.Status{}
+func withStatus(ops ...func(*mesos.Status)) func(*mesos.Task) {
+	return func(task *mesos.Task) {
+		st := &mesos.Status{}
 		for _, op := range ops {
 			op(st)
 		}
 		task.Statuses = append(task.Statuses, *st)
 	}
 }
-func withDefaultStatus(ops ...func(*state.Status)) func(*state.Task) {
-	return func(task *state.Task) {
+func withDefaultStatus(ops ...func(*mesos.Status)) func(*mesos.Task) {
+	return func(task *mesos.Task) {
 		for _, op := range ops {
-			st := &state.Status{
+			st := &mesos.Status{
 				State:   "TASK_RUNNING",
 				Healthy: Bool(true),
 			}
@@ -148,33 +148,33 @@ func withDefaultStatus(ops ...func(*state.Status)) func(*state.Task) {
 	}
 }
 
-func withHealthy(st bool) func(*state.Status) {
-	return func(status *state.Status) {
+func withHealthy(st bool) func(*mesos.Status) {
+	return func(status *mesos.Status) {
 		status.Healthy = Bool(st)
 	}
 }
 
-func withState(st string) func(*state.Status) {
-	return func(status *state.Status) {
+func withState(st string) func(*mesos.Status) {
+	return func(status *mesos.Status) {
 		status.State = st
 	}
 }
 
-func withLabel(key, value string) func(*state.Task) {
-	return func(task *state.Task) {
-		lbl := state.Label{Key: key, Value: value}
+func withLabel(key, value string) func(*mesos.Task) {
+	return func(task *mesos.Task) {
+		lbl := mesos.Label{Key: key, Value: value}
 		task.Labels = append(task.Labels, lbl)
 	}
 }
 
-func withSegmentLabel(key, value, segmentName string) func(*state.Task) {
+func withSegmentLabel(key, value, segmentName string) func(*mesos.Task) {
 	if len(segmentName) == 0 {
 		panic("segmentName can not be empty")
 	}
 
 	property := strings.TrimPrefix(key, label.Prefix)
-	return func(task *state.Task) {
-		lbl := state.Label{Key: label.Prefix + segmentName + "." + property, Value: value}
+	return func(task *mesos.Task) {
+		lbl := mesos.Label{Key: label.Prefix + segmentName + "." + property, Value: value}
 		task.Labels = append(task.Labels, lbl)
 	}
 }

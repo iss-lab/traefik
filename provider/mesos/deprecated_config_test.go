@@ -5,7 +5,7 @@ import (
 
 	"github.com/containous/traefik/provider/label"
 	"github.com/containous/traefik/types"
-	"github.com/mesosphere/mesos-dns/records/state"
+	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,19 +19,19 @@ func TestBuildConfigurationV1(t *testing.T) {
 
 	testCases := []struct {
 		desc              string
-		tasks             []state.Task
+		tasks             []mesos.Task
 		expectedFrontends map[string]*types.Frontend
 		expectedBackends  map[string]*types.Backend
 	}{
 		{
 			desc:              "when no tasks",
-			tasks:             []state.Task{},
+			tasks:             []mesos.Task{},
 			expectedFrontends: map[string]*types.Frontend{},
 			expectedBackends:  map[string]*types.Backend{},
 		},
 		{
 			desc: "2 applications with 2 tasks",
-			tasks: []state.Task{
+			tasks: []mesos.Task{
 				// App 1
 				aTask("ID1",
 					withIP("10.10.10.10"),
@@ -110,7 +110,7 @@ func TestBuildConfigurationV1(t *testing.T) {
 		},
 		{
 			desc: "with all labels",
-			tasks: []state.Task{
+			tasks: []mesos.Task{
 				aTask("ID1",
 					withLabel(label.TraefikPort, "666"),
 					withLabel(label.TraefikProtocol, "https"),
@@ -235,13 +235,13 @@ func TestBuildConfigurationV1(t *testing.T) {
 func TestTaskFilterV1(t *testing.T) {
 	testCases := []struct {
 		desc             string
-		mesosTask        state.Task
+		mesosTask        mesos.Task
 		exposedByDefault bool
 		expected         bool
 	}{
 		{
 			desc:             "no task",
-			mesosTask:        state.Task{},
+			mesosTask:        mesos.Task{},
 			exposedByDefault: true,
 			expected:         false,
 		},

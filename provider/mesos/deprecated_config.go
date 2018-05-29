@@ -12,10 +12,10 @@ import (
 	"github.com/containous/traefik/provider"
 	"github.com/containous/traefik/provider/label"
 	"github.com/containous/traefik/types"
-	"github.com/mesosphere/mesos-dns/records/state"
+	"github.com/mesos/mesos-go/api/v1/lib"
 )
 
-func (p *Provider) buildConfigurationV1(tasks []state.Task) *types.Configuration {
+func (p *Provider) buildConfigurationV1(tasks []mesos.Task) *types.Configuration {
 	var mesosFuncMap = template.FuncMap{
 		"getDomain": getFuncStringValueV1(label.TraefikDomain, p.Domain),
 		"getID":     getIDV1,
@@ -39,33 +39,33 @@ func (p *Provider) buildConfigurationV1(tasks []state.Task) *types.Configuration
 	}
 
 	// filter tasks
-	filteredTasks := fun.Filter(func(task state.Task) bool {
+	filteredTasks := fun.Filter(func(task mesos.Task) bool {
 		return taskFilterV1(task, p.ExposedByDefault)
-	}, tasks).([]state.Task)
+	}, tasks).([]mesos.Task)
 
 	// Deprecated
-	var filteredApps []state.Task
+	var filteredApps []mesos.Task
 	uniqueApps := make(map[string]struct{})
 	for _, task := range filteredTasks {
-		if _, ok := uniqueApps[task.DiscoveryInfo.Name]; !ok {
-			uniqueApps[task.DiscoveryInfo.Name] = struct{}{}
+		if _, ok := uniqueApps[task.GetDiscovery().GetName()]; !ok {
+			uniqueApps[task.GetDiscovery().GetName()] = struct{}{}
 			filteredApps = append(filteredApps, task)
 		}
 	}
 
-	appsTasks := make(map[string][]state.Task)
+	appsTasks := make(map[string][]mesos.Task)
 	for _, task := range filteredTasks {
-		if _, ok := appsTasks[task.DiscoveryInfo.Name]; !ok {
-			appsTasks[task.DiscoveryInfo.Name] = []state.Task{task}
+		if _, ok := appsTasks[task.GetDiscovery().GetName()]; !ok {
+			appsTasks[task.GetDiscovery().GetName()] = []mesos.Task{task}
 		} else {
-			appsTasks[task.DiscoveryInfo.Name] = append(appsTasks[task.DiscoveryInfo.Name], task)
+			appsTasks[task.GetDiscovery().GetName()] = append(appsTasks[task.GetDiscovery().GetName()], task)
 		}
 	}
 
 	templateObjects := struct {
-		ApplicationsTasks map[string][]state.Task
-		Applications      []state.Task // Deprecated
-		Tasks             []state.Task // Deprecated
+		ApplicationsTasks map[string][]mesos.Task
+		Applications      []mesos.Task // Deprecated
+		Tasks             []mesos.Task // Deprecated
 		Domain            string
 	}{
 		ApplicationsTasks: appsTasks,
@@ -82,14 +82,14 @@ func (p *Provider) buildConfigurationV1(tasks []state.Task) *types.Configuration
 }
 
 // Deprecated
-func taskFilterV1(task state.Task, exposedByDefaultFlag bool) bool {
-	if len(task.DiscoveryInfo.Ports.DiscoveryPorts) == 0 {
+func taskFilterV1(task mesos.Task, exposedByDefaultFlag bool) bool {
+	if len(task.GetDiscovery().GetPorts().GetPorts()) == 0 {
 		log.Debugf("Filtering Mesos task without port %s", task.Name)
 		return false
 	}
 
 	if !isEnabledV1(task, exposedByDefaultFlag) {
-		log.Debugf("Filtering disabled Mesos task %s", task.DiscoveryInfo.Name)
+		log.Debugf("Filtering disabled Mesos task %s", task.GetDiscovery().GetName())
 		return false
 	}
 
@@ -102,7 +102,7 @@ func taskFilterV1(task state.Task, exposedByDefaultFlag bool) bool {
 	}
 	if portIndexLabel != "" {
 		index, err := strconv.Atoi(portIndexLabel)
-		if err != nil || index < 0 || index > len(task.DiscoveryInfo.Ports.DiscoveryPorts)-1 {
+		if err != nil || index < 0 || index > len(task.GetDiscovery().GetPorts().GetPorts())-1 {
 			log.Debugf("Filtering Mesos task %s with unexpected value for %q label", task.Name, label.TraefikPortIndex)
 			return false
 		}
@@ -115,8 +115,8 @@ func taskFilterV1(task state.Task, exposedByDefaultFlag bool) bool {
 		}
 
 		var foundPort bool
-		for _, exposedPort := range task.DiscoveryInfo.Ports.DiscoveryPorts {
-			if port == exposedPort.Number {
+		for _, exposedPort := range task.GetDiscovery().GetPorts().GetPorts() {
+			if port == int(exposedPort.Number) {
 				foundPort = true
 				break
 			}
@@ -130,7 +130,7 @@ func taskFilterV1(task state.Task, exposedByDefaultFlag bool) bool {
 
 	// filter healthChecks
 	if task.Statuses != nil && len(task.Statuses) > 0 && task.Statuses[0].Healthy != nil && !*task.Statuses[0].Healthy {
-		log.Debugf("Filtering Mesos task %s with bad healthCheck", task.DiscoveryInfo.Name)
+		log.Debugf("Filtering Mesos task %s with bad healthCheck", task.GetDiscovery().GetName())
 		return false
 
 	}
@@ -138,12 +138,12 @@ func taskFilterV1(task state.Task, exposedByDefaultFlag bool) bool {
 }
 
 // Deprecated
-func getIDV1(task state.Task) string {
-	return provider.Normalize(task.ID)
+func getIDV1(task mesos.Task) string {
+	return provider.Normalize(task.TaskID.Value)
 }
 
 // Deprecated
-func getBackendV1(task state.Task, apps []state.Task) string {
+func getBackendV1(task mesos.Task, apps []mesos.Task) string {
 	_, err := getApplicationV1(task, apps)
 	if err != nil {
 		log.Error(err)
@@ -153,38 +153,38 @@ func getBackendV1(task state.Task, apps []state.Task) string {
 }
 
 // Deprecated
-func getBackendNameV1(task state.Task) string {
+func getBackendNameV1(task mesos.Task) string {
 	if value := getStringValueV1(task, label.TraefikBackend, ""); len(value) > 0 {
 		return value
 	}
-	return provider.Normalize(task.DiscoveryInfo.Name)
+	return provider.Normalize(task.GetDiscovery().GetName())
 }
 
 // Deprecated
-func getFrontendNameV1(task state.Task) string {
-	// TODO task.ID -> task.Name + task.ID
-	return provider.Normalize(task.ID)
+func getFrontendNameV1(task mesos.Task) string {
+	// TODO task.TaskID.Value -> task.Name + task.TaskID.Value
+	return provider.Normalize(task.TaskID.Value)
 }
 
 // Deprecated
-func (p *Provider) getPort(task state.Task, applications []state.Task) string {
+func (p *Provider) getPort(task mesos.Task, applications []mesos.Task) string {
 	_, err := getApplicationV1(task, applications)
 	if err != nil {
 		log.Error(err)
 		return ""
 	}
 
-	plv := getIntValueV1(task, label.TraefikPortIndex, math.MinInt32, len(task.DiscoveryInfo.Ports.DiscoveryPorts)-1)
+	plv := getIntValueV1(task, label.TraefikPortIndex, math.MinInt32, len(task.GetDiscovery().GetPorts().GetPorts())-1)
 	if plv >= 0 {
-		return strconv.Itoa(task.DiscoveryInfo.Ports.DiscoveryPorts[plv].Number)
+		return strconv.Itoa(int(task.GetDiscovery().GetPorts().GetPorts()[plv].Number))
 	}
 
 	if pv := getStringValueV1(task, label.TraefikPort, ""); len(pv) > 0 {
 		return pv
 	}
 
-	for _, port := range task.DiscoveryInfo.Ports.DiscoveryPorts {
-		return strconv.Itoa(port.Number)
+	for _, port := range task.GetDiscovery().GetPorts().GetPorts() {
+		return strconv.Itoa(int(port.Number))
 	}
 	return ""
 }
@@ -192,30 +192,31 @@ func (p *Provider) getPort(task state.Task, applications []state.Task) string {
 // getFrontendRuleV1 returns the frontend rule for the specified application, using
 // it's label. It returns a default one (Host) if the label is not present.
 // Deprecated
-func (p *Provider) getFrontendRuleV1(task state.Task) string {
+func (p *Provider) getFrontendRuleV1(task mesos.Task) string {
 	if v := getStringValueV1(task, label.TraefikFrontendRule, ""); len(v) > 0 {
 		return v
 	}
 
 	domain := getStringValueV1(task, label.TraefikDomain, p.Domain)
-	return "Host:" + strings.ToLower(strings.Replace(p.getSubDomain(task.DiscoveryInfo.Name), "_", "-", -1)) + "." + domain
+	return "Host:" + strings.ToLower(strings.Replace(p.getSubDomain(task.GetDiscovery().GetName()), "_", "-", -1)) + "." + domain
 }
 
 // Deprecated
-func (p *Provider) getHostV1(task state.Task) string {
-	return task.IP(strings.Split(p.IPSources, ",")...)
+func (p *Provider) getHostV1(task mesos.Task) string {
+	ipSources := strings.Split(p.IPSources, ",")
+	return p.State.GetTaskIP(task, ipSources)
 }
 
 // Deprecated
-func isEnabledV1(task state.Task, exposedByDefault bool) bool {
+func isEnabledV1(task mesos.Task, exposedByDefault bool) bool {
 	return getBoolValueV1(task, label.TraefikEnable, exposedByDefault)
 }
 
 // Label functions
 
 // Deprecated
-func getFuncApplicationStringValueV1(labelName string, defaultValue string) func(task state.Task, applications []state.Task) string {
-	return func(task state.Task, applications []state.Task) string {
+func getFuncApplicationStringValueV1(labelName string, defaultValue string) func(task mesos.Task, applications []mesos.Task) string {
+	return func(task mesos.Task, applications []mesos.Task) string {
 		_, err := getApplicationV1(task, applications)
 		if err != nil {
 			log.Error(err)
@@ -227,8 +228,8 @@ func getFuncApplicationStringValueV1(labelName string, defaultValue string) func
 }
 
 // Deprecated
-func getFuncApplicationIntValueV1(labelName string, defaultValue int) func(task state.Task, applications []state.Task) int {
-	return func(task state.Task, applications []state.Task) int {
+func getFuncApplicationIntValueV1(labelName string, defaultValue int) func(task mesos.Task, applications []mesos.Task) int {
+	return func(task mesos.Task, applications []mesos.Task) int {
 		_, err := getApplicationV1(task, applications)
 		if err != nil {
 			log.Error(err)
@@ -240,48 +241,48 @@ func getFuncApplicationIntValueV1(labelName string, defaultValue int) func(task 
 }
 
 // Deprecated
-func getFuncStringValueV1(labelName string, defaultValue string) func(task state.Task) string {
-	return func(task state.Task) string {
+func getFuncStringValueV1(labelName string, defaultValue string) func(task mesos.Task) string {
+	return func(task mesos.Task) string {
 		return getStringValueV1(task, labelName, defaultValue)
 	}
 }
 
 // Deprecated
-func getFuncBoolValueV1(labelName string, defaultValue bool) func(task state.Task) bool {
-	return func(task state.Task) bool {
+func getFuncBoolValueV1(labelName string, defaultValue bool) func(task mesos.Task) bool {
+	return func(task mesos.Task) bool {
 		return getBoolValueV1(task, labelName, defaultValue)
 	}
 }
 
 // Deprecated
-func getFuncIntValueV1(labelName string, defaultValue int) func(task state.Task) int {
-	return func(task state.Task) int {
+func getFuncIntValueV1(labelName string, defaultValue int) func(task mesos.Task) int {
+	return func(task mesos.Task) int {
 		return getIntValueV1(task, labelName, defaultValue, math.MaxInt32)
 	}
 }
 
 // Deprecated
-func getFuncSliceStringValueV1(labelName string) func(task state.Task) []string {
-	return func(task state.Task) []string {
+func getFuncSliceStringValueV1(labelName string) func(task mesos.Task) []string {
+	return func(task mesos.Task) []string {
 		return getSliceStringValueV1(task, labelName)
 	}
 }
 
 // Deprecated
-func getStringValueV1(task state.Task, labelName string, defaultValue string) string {
-	for _, lbl := range task.Labels {
-		if lbl.Key == labelName && len(lbl.Value) > 0 {
-			return lbl.Value
+func getStringValueV1(task mesos.Task, labelName string, defaultValue string) string {
+	for _, lbl := range task.GetLabels().GetLabels() {
+		if lbl.Key == labelName && len(lbl.GetValue()) > 0 {
+			return lbl.GetValue()
 		}
 	}
 	return defaultValue
 }
 
 // Deprecated
-func getBoolValueV1(task state.Task, labelName string, defaultValue bool) bool {
-	for _, lbl := range task.Labels {
+func getBoolValueV1(task mesos.Task, labelName string, defaultValue bool) bool {
+	for _, lbl := range task.GetLabels().GetLabels() {
 		if lbl.Key == labelName {
-			v, err := strconv.ParseBool(lbl.Value)
+			v, err := strconv.ParseBool(lbl.GetValue())
 			if err == nil {
 				return v
 			}
@@ -291,10 +292,10 @@ func getBoolValueV1(task state.Task, labelName string, defaultValue bool) bool {
 }
 
 // Deprecated
-func getIntValueV1(task state.Task, labelName string, defaultValue int, maxValue int) int {
-	for _, lbl := range task.Labels {
+func getIntValueV1(task mesos.Task, labelName string, defaultValue int, maxValue int) int {
+	for _, lbl := range task.GetLabels().GetLabels() {
 		if lbl.Key == labelName {
-			value, err := strconv.Atoi(lbl.Value)
+			value, err := strconv.Atoi(lbl.GetValue())
 			if err == nil {
 				if value <= maxValue {
 					return value
@@ -309,21 +310,21 @@ func getIntValueV1(task state.Task, labelName string, defaultValue int, maxValue
 }
 
 // Deprecated
-func getSliceStringValueV1(task state.Task, labelName string) []string {
-	for _, lbl := range task.Labels {
+func getSliceStringValueV1(task mesos.Task, labelName string) []string {
+	for _, lbl := range task.GetLabels().GetLabels() {
 		if lbl.Key == labelName {
-			return label.SplitAndTrimString(lbl.Value, ",")
+			return label.SplitAndTrimString(lbl.GetValue(), ",")
 		}
 	}
 	return nil
 }
 
 // Deprecated
-func getApplicationV1(task state.Task, apps []state.Task) (state.Task, error) {
+func getApplicationV1(task mesos.Task, apps []mesos.Task) (mesos.Task, error) {
 	for _, app := range apps {
-		if app.DiscoveryInfo.Name == task.DiscoveryInfo.Name {
+		if app.GetDiscovery().GetName() == task.GetDiscovery().GetName() {
 			return app, nil
 		}
 	}
-	return state.Task{}, fmt.Errorf("unable to get Mesos application from task %s", task.DiscoveryInfo.Name)
+	return mesos.Task{}, fmt.Errorf("unable to get Mesos application from task %s", task.GetDiscovery().GetName())
 }
