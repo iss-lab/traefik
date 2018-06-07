@@ -14,7 +14,9 @@ func TestBuildConfigurationV1(t *testing.T) {
 	p := &Provider{
 		Domain:           "mesos.localhost",
 		ExposedByDefault: true,
-		IPSources:        "host",
+		// IPSources:        "host",
+		IPSources: "netinfo",
+		State:     NewStateCache(),
 	}
 
 	testCases := []struct {
@@ -34,29 +36,29 @@ func TestBuildConfigurationV1(t *testing.T) {
 			tasks: []mesos.Task{
 				// App 1
 				aTask("ID1",
-					withIP("10.10.10.10"),
+					withNetIP("10.10.10.10"),
 					withInfo("name1",
 						withPorts(withPort("TCP", 80, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				aTask("ID2",
-					withIP("10.10.10.11"),
+					withNetIP("10.10.10.11"),
 					withInfo("name1",
 						withPorts(withPort("TCP", 81, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				// App 2
 				aTask("ID3",
-					withIP("20.10.10.10"),
+					withNetIP("20.10.10.10"),
 					withInfo("name2",
 						withPorts(withPort("TCP", 80, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				aTask("ID4",
-					withIP("20.10.10.11"),
+					withNetIP("20.10.10.11"),
 					withInfo("name2",
 						withPorts(withPort("TCP", 81, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 			},
 			expectedFrontends: map[string]*types.Frontend{
@@ -182,11 +184,11 @@ func TestBuildConfigurationV1(t *testing.T) {
 					withLabel(label.Prefix+label.BaseFrontendRateLimit+"bar."+label.SuffixRateLimitPeriod, "3"),
 					withLabel(label.Prefix+label.BaseFrontendRateLimit+"bar."+label.SuffixRateLimitAverage, "6"),
 					withLabel(label.Prefix+label.BaseFrontendRateLimit+"bar."+label.SuffixRateLimitBurst, "9"),
-					withIP("10.10.10.10"),
+					withNetIP("10.10.10.10"),
 					withInfo("name1", withPorts(
 						withPortTCP(80, "n"),
 						withPortTCP(666, "n"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 			},
 			expectedFrontends: map[string]*types.Frontend{
@@ -247,7 +249,7 @@ func TestTaskFilterV1(t *testing.T) {
 		},
 		{
 			desc:             "task not healthy",
-			mesosTask:        aTask("test", withStatus(withState("TASK_RUNNING"))),
+			mesosTask:        aTask("test", withStatus(withState(mesos.TASK_RUNNING))),
 			exposedByDefault: true,
 			expected:         false,
 		},
@@ -389,7 +391,7 @@ func TestTaskFilterV1(t *testing.T) {
 			desc: "healthy nil",
 			mesosTask: aTask("test",
 				withStatus(
-					withState("TASK_RUNNING"),
+					withState(mesos.TASK_RUNNING),
 				),
 				withLabel(label.TraefikEnable, "true"),
 				withLabel(label.TraefikPort, "80"),
@@ -402,7 +404,7 @@ func TestTaskFilterV1(t *testing.T) {
 			desc: "healthy false",
 			mesosTask: aTask("test",
 				withStatus(
-					withState("TASK_RUNNING"),
+					withState(mesos.TASK_RUNNING),
 					withHealthy(false),
 				),
 				withLabel(label.TraefikEnable, "true"),
@@ -424,7 +426,7 @@ func TestTaskFilterV1(t *testing.T) {
 			if !ok {
 				t.Logf("Statuses : %v", test.mesosTask.Statuses)
 				t.Logf("Label : %v", test.mesosTask.Labels)
-				t.Logf("DiscoveryInfo : %v", test.mesosTask.DiscoveryInfo)
+				t.Logf("DiscoveryInfo : %v", test.mesosTask.GetDiscovery())
 				t.Fatalf("Expected %v, got %v", test.expected, actual)
 			}
 		})

@@ -8,6 +8,7 @@ import (
 	"github.com/containous/traefik/provider/label"
 	"github.com/containous/traefik/types"
 	"github.com/mesos/mesos-go/api/v1/lib"
+	"github.com/mesos/mesos-go/api/v1/lib/master"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +17,9 @@ func TestBuildConfiguration(t *testing.T) {
 	p := &Provider{
 		Domain:           "mesos.localhost",
 		ExposedByDefault: true,
-		IPSources:        "host",
+		// IPSources:        "host",
+		IPSources: "netinfo",
+		State:     NewStateCache(),
 	}
 
 	testCases := []struct {
@@ -36,29 +39,29 @@ func TestBuildConfiguration(t *testing.T) {
 			tasks: []mesos.Task{
 				// App 1
 				aTask("ID1",
-					withIP("10.10.10.10"),
+					withNetIP("10.10.10.10"),
 					withInfo("name1",
 						withPorts(withPort("TCP", 80, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				aTask("ID2",
-					withIP("10.10.10.11"),
+					withNetIP("10.10.10.11"),
 					withInfo("name1",
 						withPorts(withPort("TCP", 81, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				// App 2
 				aTask("ID3",
-					withIP("20.10.10.10"),
+					withNetIP("20.10.10.10"),
 					withInfo("name2",
 						withPorts(withPort("TCP", 80, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				aTask("ID4",
-					withIP("20.10.10.11"),
+					withNetIP("20.10.10.11"),
 					withInfo("name2",
 						withPorts(withPort("TCP", 81, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 			},
 			expectedFrontends: map[string]*types.Frontend{
@@ -191,11 +194,11 @@ func TestBuildConfiguration(t *testing.T) {
 					withLabel(label.Prefix+label.BaseFrontendRateLimit+"bar."+label.SuffixRateLimitPeriod, "3"),
 					withLabel(label.Prefix+label.BaseFrontendRateLimit+"bar."+label.SuffixRateLimitAverage, "6"),
 					withLabel(label.Prefix+label.BaseFrontendRateLimit+"bar."+label.SuffixRateLimitBurst, "9"),
-					withIP("10.10.10.10"),
+					withNetIP("10.10.10.10"),
 					withInfo("name1", withPorts(
 						withPortTCP(80, "n"),
 						withPortTCP(666, "n"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 			},
 			expectedFrontends: map[string]*types.Frontend{
@@ -359,27 +362,29 @@ func TestBuildConfigurationSegments(t *testing.T) {
 	p := &Provider{
 		Domain:           "mesos.localhost",
 		ExposedByDefault: true,
-		IPSources:        "host",
+		// IPSources:        "host",
+		IPSources: "netinfo",
+		State:     NewStateCache(),
 	}
 
 	testCases := []struct {
 		desc              string
-		tasks             []state.Task
+		tasks             []mesos.Task
 		expectedFrontends map[string]*types.Frontend
 		expectedBackends  map[string]*types.Backend
 	}{
 		{
 			desc: "multiple ports with segments",
-			tasks: []state.Task{
+			tasks: []mesos.Task{
 				aTask("app-taskID",
-					withIP("127.0.0.1"),
+					withNetIP("127.0.0.1"),
 					withInfo("/app",
 						withPorts(
 							withPort("TCP", 80, "web"),
 							withPort("TCP", 81, "admin"),
 						),
 					),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 					withLabel(label.TraefikBackendMaxConnAmount, "1000"),
 					withLabel(label.TraefikBackendMaxConnExtractorFunc, "client.ip"),
 					withSegmentLabel(label.TraefikPort, "80", "web"),
@@ -442,16 +447,16 @@ func TestBuildConfigurationSegments(t *testing.T) {
 		},
 		{
 			desc: "when all labels are set",
-			tasks: []state.Task{
+			tasks: []mesos.Task{
 				aTask("app-taskID",
-					withIP("127.0.0.1"),
+					withNetIP("127.0.0.1"),
 					withInfo("/app",
 						withPorts(
 							withPort("TCP", 80, "web"),
 							withPort("TCP", 81, "admin"),
 						),
 					),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 
 					withLabel(label.TraefikBackendCircuitBreakerExpression, "NetworkErrorRatio() > 0.5"),
 					withLabel(label.TraefikBackendHealthCheckScheme, "http"),
@@ -705,7 +710,7 @@ func TestTaskFilter(t *testing.T) {
 		},
 		{
 			desc:             "task not healthy",
-			mesosTask:        aTaskData("test", "", withStatus(withState("TASK_RUNNING"))),
+			mesosTask:        aTaskData("test", "", withStatus(withState(mesos.TASK_RUNNING))),
 			exposedByDefault: true,
 			expected:         false,
 		},
@@ -875,7 +880,7 @@ func TestTaskFilter(t *testing.T) {
 			desc: "healthy nil",
 			mesosTask: aTaskData("test", "",
 				withStatus(
-					withState("TASK_RUNNING"),
+					withState(mesos.TASK_RUNNING),
 				),
 				withLabel(label.TraefikEnable, "true"),
 				withLabel(label.TraefikPort, "80"),
@@ -888,7 +893,7 @@ func TestTaskFilter(t *testing.T) {
 			desc: "healthy false",
 			mesosTask: aTaskData("test", "",
 				withStatus(
-					withState("TASK_RUNNING"),
+					withState(mesos.TASK_RUNNING),
 					withHealthy(false),
 				),
 				withLabel(label.TraefikEnable, "true"),
@@ -910,7 +915,7 @@ func TestTaskFilter(t *testing.T) {
 			if !ok {
 				t.Logf("Statuses : %v", test.mesosTask.Statuses)
 				t.Logf("Label : %v", test.mesosTask.Labels)
-				t.Logf("DiscoveryInfo : %v", test.mesosTask.DiscoveryInfo)
+				t.Logf("DiscoveryInfo : %v", test.mesosTask.GetDiscovery())
 				t.Fatalf("Expected %v, got %v", test.expected, actual)
 			}
 		})
@@ -1068,7 +1073,9 @@ func TestGetServerPort(t *testing.T) {
 
 	p := &Provider{
 		ExposedByDefault: true,
-		IPSources:        "host",
+		// IPSources:        "host",
+		IPSources: "netinfo",
+		State:     NewStateCache(),
 	}
 
 	for _, test := range testCases {
@@ -1127,32 +1134,32 @@ func TestGetServers(t *testing.T) {
 			tasks: []taskData{
 				// App 1
 				aTaskData("ID1", "",
-					withIP("10.10.10.10"),
+					withNetIP("10.10.10.10"),
 					withInfo("name1",
 						withPorts(withPort("TCP", 80, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				aTaskData("ID2", "",
-					withIP("10.10.10.11"),
+					withNetIP("10.10.10.11"),
 					withLabel(label.TraefikWeight, "18"),
 					withInfo("name1",
 						withPorts(withPort("TCP", 81, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				// App 2
 				aTaskData("ID3", "",
 					withLabel(label.TraefikWeight, "12"),
-					withIP("20.10.10.10"),
+					withNetIP("20.10.10.10"),
 					withInfo("name2",
 						withPorts(withPort("TCP", 80, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 				aTaskData("ID4", "",
 					withLabel(label.TraefikWeight, "6"),
-					withIP("20.10.10.11"),
+					withNetIP("20.10.10.11"),
 					withInfo("name2",
 						withPorts(withPort("TCP", 81, "WEB"))),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 			},
 			expected: map[string]types.Server{
@@ -1178,14 +1185,14 @@ func TestGetServers(t *testing.T) {
 			desc: "with segments matching port names",
 			tasks: segmentedTaskData([]string{"WEB1", "WEB2", "WEB3"},
 				aTask("ID1",
-					withIP("10.10.10.10"),
+					withNetIP("10.10.10.10"),
 					withInfo("name1",
 						withPorts(
 							withPort("TCP", 81, "WEB1"),
 							withPort("TCP", 82, "WEB2"),
 							withPort("TCP", 83, "WEB3"),
 						)),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 			),
 			expected: map[string]types.Server{
@@ -1207,7 +1214,7 @@ func TestGetServers(t *testing.T) {
 			desc: "with segments and portname labels",
 			tasks: segmentedTaskData([]string{"a", "b", "c"},
 				aTask("ID1",
-					withIP("10.10.10.10"),
+					withNetIP("10.10.10.10"),
 					withInfo("name1",
 						withPorts(
 							withPort("TCP", 81, "WEB1"),
@@ -1217,7 +1224,7 @@ func TestGetServers(t *testing.T) {
 					withSegmentLabel(label.TraefikPortName, "WEB2", "a"),
 					withSegmentLabel(label.TraefikPortName, "WEB3", "b"),
 					withSegmentLabel(label.TraefikPortName, "WEB1", "c"),
-					withStatus(withHealthy(true), withState("TASK_RUNNING")),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
 				),
 			),
 
@@ -1241,7 +1248,9 @@ func TestGetServers(t *testing.T) {
 	p := &Provider{
 		Domain:           "docker.localhost",
 		ExposedByDefault: true,
-		IPSources:        "host",
+		// IPSources:        "host",
+		IPSources: "netinfo",
+		State:     NewStateCache(),
 	}
 
 	for _, test := range testCases {
@@ -1250,6 +1259,194 @@ func TestGetServers(t *testing.T) {
 			t.Parallel()
 
 			actual := p.getServers(test.tasks)
+
+			assert.Equal(t, test.expected, actual)
+		})
+	}
+}
+
+func TestIPSources(t *testing.T) {
+	testCases := []struct {
+		desc     string
+		provider *Provider
+		agents   []master.Response_GetAgents_Agent
+		tasks    []taskData
+		expected map[string]types.Server
+	}{
+		{
+			desc: "Host source",
+			provider: &Provider{
+				Domain:           "docker.localhost",
+				ExposedByDefault: true,
+				IPSources:        "host",
+				State:            NewStateCache(),
+			},
+			agents: []master.Response_GetAgents_Agent{
+				anAgent("agent1",
+					withAgentIP("10.10.10.10"),
+				),
+			},
+			tasks: []taskData{
+				aTaskData("ID1", "",
+					withAgentID("agent1"),
+					withInfo("name1",
+						withPorts(withPort("TCP", 80, "WEB"))),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
+				),
+			},
+			expected: map[string]types.Server{
+				"server-ID1": {
+					URL:    "http://10.10.10.10:80",
+					Weight: label.DefaultWeight,
+				},
+			},
+		},
+		{
+			desc: "Netinfo source",
+			provider: &Provider{
+				Domain:           "docker.localhost",
+				ExposedByDefault: true,
+				IPSources:        "netinfo",
+				State:            NewStateCache(),
+			},
+			agents: []master.Response_GetAgents_Agent{},
+			tasks: []taskData{
+				aTaskData("ID1", "",
+					withNetIP("10.10.10.10"),
+					withInfo("name1",
+						withPorts(withPort("TCP", 80, "WEB"))),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
+				),
+			},
+			expected: map[string]types.Server{
+				"server-ID1": {
+					URL:    "http://10.10.10.10:80",
+					Weight: label.DefaultWeight,
+				},
+			},
+		},
+		{
+			desc: "Docker source",
+			provider: &Provider{
+				Domain:           "docker.localhost",
+				ExposedByDefault: true,
+				IPSources:        "docker",
+				State:            NewStateCache(),
+			},
+			agents: []master.Response_GetAgents_Agent{},
+			tasks: []taskData{
+				aTaskData("ID1", "",
+					withDockerIP("10.10.10.10"),
+					withInfo("name1",
+						withPorts(withPort("TCP", 80, "WEB"))),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
+				),
+			},
+			expected: map[string]types.Server{
+				"server-ID1": {
+					URL:    "http://10.10.10.10:80",
+					Weight: label.DefaultWeight,
+				},
+			},
+		},
+		{
+			desc: "Mesos source",
+			provider: &Provider{
+				Domain:           "docker.localhost",
+				ExposedByDefault: true,
+				IPSources:        "mesos",
+				State:            NewStateCache(),
+			},
+			agents: []master.Response_GetAgents_Agent{},
+			tasks: []taskData{
+				aTaskData("ID1", "",
+					withMesosIP("10.10.10.10"),
+					withInfo("name1",
+						withPorts(withPort("TCP", 80, "WEB"))),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
+				),
+			},
+			expected: map[string]types.Server{
+				"server-ID1": {
+					URL:    "http://10.10.10.10:80",
+					Weight: label.DefaultWeight,
+				},
+			},
+		},
+		{
+			desc: "Multiple sources",
+			provider: &Provider{
+				Domain:           "docker.localhost",
+				ExposedByDefault: true,
+				IPSources:        "netinfo,mesos,docker,host",
+				State:            NewStateCache(),
+			},
+			agents: []master.Response_GetAgents_Agent{
+				anAgent("agent1",
+					withAgentIP("10.10.10.14"),
+				),
+			},
+			tasks: []taskData{
+				// mesos ip overrides host ip
+				aTaskData("ID1", "",
+					withAgentID("agent1"),
+					withMesosIP("10.10.10.11"),
+					withInfo("name1",
+						withPorts(withPort("TCP", 80, "WEB"))),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
+				),
+				// docker ip overrides host ip
+				aTaskData("ID2", "",
+					withAgentID("agent1"),
+					withDockerIP("10.10.10.12"),
+					withInfo("name1",
+						withPorts(withPort("TCP", 80, "WEB"))),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
+				),
+				// netinfo ip overrides host ip
+				aTaskData("ID3", "",
+					withAgentID("agent1"),
+					withNetIP("10.10.10.13"),
+					withInfo("name1",
+						withPorts(withPort("TCP", 80, "WEB"))),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
+				),
+				// host ip is the only one available
+				aTaskData("ID4", "",
+					withAgentID("agent1"),
+					withInfo("name1",
+						withPorts(withPort("TCP", 80, "WEB"))),
+					withStatus(withHealthy(true), withState(mesos.TASK_RUNNING)),
+				),
+			},
+			expected: map[string]types.Server{
+				"server-ID1": {
+					URL:    "http://10.10.10.11:80",
+					Weight: label.DefaultWeight,
+				},
+				"server-ID2": {
+					URL:    "http://10.10.10.12:80",
+					Weight: label.DefaultWeight,
+				},
+				"server-ID3": {
+					URL:    "http://10.10.10.13:80",
+					Weight: label.DefaultWeight,
+				},
+				"server-ID4": {
+					URL:    "http://10.10.10.14:80",
+					Weight: label.DefaultWeight,
+				},
+			},
+		},
+	}
+
+	for _, test := range testCases {
+		test := test
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			test.provider.State.AddAgents(test.agents)
+			actual := test.provider.getServers(test.tasks)
 
 			assert.Equal(t, test.expected, actual)
 		})
@@ -1302,6 +1499,7 @@ func TestGetBackendName(t *testing.T) {
 func TestGetFrontendRule(t *testing.T) {
 	p := Provider{
 		Domain: "mesos.localhost",
+		State:  NewStateCache(),
 	}
 
 	testCases := []struct {
