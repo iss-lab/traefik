@@ -1,10 +1,6 @@
 package mesos
 
 import (
-	// "context"
-	// "fmt"
-	// "net"
-	// "strings"
 	"time"
 
 	"github.com/cenk/backoff"

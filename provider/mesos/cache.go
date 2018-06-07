@@ -51,6 +51,7 @@ func (c *StateCache) AddTask(t mesos.Task) {
 
 // UpdateTask updates a task in the cache
 func (c *StateCache) UpdateTask(status mesos.TaskStatus) {
+	// TODO: If state is terminal (KILLED, COMPLETED, etc), remove completely from task map?
 	id := status.GetTaskID()
 	idVal := id.GetValue()
 	state := status.GetState()
