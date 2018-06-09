@@ -162,10 +162,9 @@ func taskFilter(task taskData, exposedByDefaultFlag bool) bool {
 	}
 
 	// filter healthChecks
-	if task.Statuses != nil && len(task.Statuses) > 0 && task.Statuses[0].Healthy != nil && !*task.Statuses[0].Healthy {
+	if !GetTaskHealthy(task) {
 		log.Debugf("Filtering Mesos task %s with bad healthCheck", name)
 		return false
-
 	}
 	return true
 }
@@ -294,12 +293,4 @@ func getIntValue(labels map[string]string, labelName string, defaultValue int, m
 	}
 	log.Warnf("The value %d for %s exceed the max authorized value %d, falling back to %d.", value, labelName, maxValue, defaultValue)
 	return defaultValue
-}
-
-func extractLabels(task mesos.Task) map[string]string {
-	labels := make(map[string]string)
-	for _, lbl := range task.GetLabels().GetLabels() {
-		labels[lbl.Key] = lbl.GetValue()
-	}
-	return labels
 }

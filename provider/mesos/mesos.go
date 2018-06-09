@@ -91,6 +91,7 @@ func (p *Provider) handleEvent(e master.Event) (changed bool) {
 	switch t := e.GetType(); t {
 	case master.Event_SUBSCRIBED:
 		agents := e.GetSubscribed().GetGetState().GetGetAgents().GetAgents()
+		// Agents must be added first because cachedTask.AgentIP needs them
 		p.State.AddAgents(agents)
 		tasks := e.GetSubscribed().GetGetState().GetGetTasks().GetTasks()
 		p.State.AddTasks(tasks)
